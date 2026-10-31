@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>SB Mod Keys</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0a; color: #eee; font-family: monospace; 
+         padding: 2rem; min-height: 100vh; }
+  h1 { color: #a855f7; margin-bottom: 1.5rem; }
+  .card { background: #111; border: 1px solid #222; border-radius: 8px; 
+          padding: 1.5rem; margin-bottom: 1rem; }
+  input { background: #1a1a1a; color: #eee; border: 1px solid #333; 
+          border-radius: 6px; padding: 8px 12px; width: 100%; 
+          margin-bottom: 8px; font-family: monospace; }
+  button { background: #a855f7; color: white; border: none; 
+           border-radius: 6px; padding: 8px 16px; cursor: pointer; 
+           font-family: monospace; margin: 4px; }
+  button:hover { background: #9333ea; }
+  button.red { background: #dc2626; }
+  button.red:hover { background: #b91c1c; }
+  button.green { background: #16a34a; }
+  button.green:hover { background: #15803d; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  td, th { padding: 10px; border: 1px solid #222; text-align: left; 
+           font-size: 0.9rem; }
+  th { background: #1a1a1a; color: #a855f7; }
+  .pending { color: #f59e0b; }
+  .active  { color: #4ade80; }
+  .revoked { color: #f87171; }
+  .badge { padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+  .auto-refresh { color: #666; font-size: 0.8rem; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+<h1>🔑 SB Mod Panel</h1>
+
+<div class="card">
+  <input id="serverUrl" placeholder="https://your-app.up.railway.app" />
+  <input id="secret" type="password" placeholder="admin secret" />
+  <button onclick="loadKeys()">Connect</button>
+  <div class="auto-refresh" id="refreshStatus"></div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:1rem; color:#a855f7">Pending Requests</h3>
+  <table id="pendingTable">
+    <tr>
+      <th>Code</th>
+      <th>Submitted</th>
+      <th>Action</th>
+    </tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:1rem; color:#a855f7">Active Keys</h3>
+  <table id="activeTable">
+    <tr>
+      <th>Code</th>
+      <th>Status</th>
+      <th>Submitted</th>
+      <th>Action</th>
+    </tr>
+  </table>
+</div>
+
+<script>
+  const url   = () => document.getElementById("serverUrl").value.replace(/\/$/, "");
+  const auth  = () => document.getElementById("secret").value;
+  let interval = null;
+
+  async function loadKeys() {
+    try {
+      const res  = await fetch(`${url()}/admin/list`, {
+        headers: { "x-admin-secret": auth() }
+      });
+      const data = await res.json();
+
+      const pending = document.getElementById("pendingTable");
+      const active  = document.getElementById("activeTable");
+
+      pending.innerHTML = "<tr><th>Code</th><th>Submitted</th><th>Action</th></tr>";
+      active.innerHTML  = "<tr><th>Code</th><th>Status</th><th>Submitted</th><th>Action</th></tr>";
+
+      for (const [key, info] of Object.entries(data)) {
+        const time = info.submitted
+          ? new Date(info.submitted).toLocaleString()
+          : "—";
+
+        if (!info.approved) {
+          // pending approval
+          const row = pending.insertRow();
+          row.innerHTML = `
+            <td style="font-size:1.2rem; letter-spacing:2px; color:#f59e0b">
+              <b>${key}</b>
+            </td>
+            <td>${time}</td>
+            <td>
+              <button class="green" onclick="approve('${key}')">✅ Approve</button>
+              <button class="red"   onclick="revoke('${key}')">❌ Deny</button>
+            </td>`;
+        } else {
+          // approved or revoked
+          const status = info.active
+            ? `<span class="active">● Active</span>`
+            : `<span class="revoked">● Revoked</span>`;
+          const row = active.insertRow();
+          row.innerHTML = `
+            <td style="letter-spacing:2px"><b>${key}</b></td>
+            <td>${status}</td>
+            <td>${time}</td>
+            <td>
+              ${info.active
+                ? `<button class="red" onclick="revoke('${key}')">Revoke</button>`
+                : `<button class="green" onclick="approve('${key}')">Re-approve</button>`
+              }
+            </td>`;
+        }
+      }
+
+      document.getElementById("refreshStatus").textContent =
+        `Last refreshed: ${new Date().toLocaleTimeString()}`;
+
+      // start auto-refresh if not already
+      if (!interval) {
+        interval = setInterval(loadKeys, 8000);
+      }
+    } catch (e) {
+      document.getElementById("refreshStatus").textContent = "Connection failed";
+    }
+  }
+
+  async function approve(key) {
+    await fetch(`${url()}/admin/approve/${key}`, {
+      method: "POST",
+      headers: { "x-admin-secret": auth() }
+    });
+    loadKeys();
+  }
+
+  async function revoke(key) {
+    await fetch(`${url()}/admin/revoke/${key}`, {
+      method: "POST",
+      headers: { "x-admin-secret": auth() }
+    });
+    loadKeys();
+  }
+</script>
+</body>
+</html>
